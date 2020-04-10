@@ -49,7 +49,7 @@ fn test_inserts() {
 }
 
 #[derive(Clone)]
-struct OperationList(pub Vec<Op<char>>);
+struct OperationList(pub Vec<Op<char, SiteId>>);
 
 use quickcheck::{Arbitrary, Gen};
 
