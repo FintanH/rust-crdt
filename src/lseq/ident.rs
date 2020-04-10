@@ -1,13 +1,13 @@
+use bitvec::vec::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use bitvec::vec::*;
 
 const BOUNDARY: u64 = 10;
 
 const INITIAL_BASE: u32 = 3; // start with 2^8
 
-/// A tree identifier uniquely locates a character in an LSeq tree
-/// it represents the path that needs to be taken in order to reach
+/// A tree identifier uniquely locates a character in an LSeq tree.
+/// It represents the path that needs to be taken in order to reach
 /// the character. At each level we store the index of the child tree node
 /// as well as the id of the site that inserted that node. This resolves conflicts where
 /// two sites decide to pick the same child index to allocate a fresh node
@@ -17,18 +17,25 @@ pub struct Identifier {
     // site_id: u64,
     // counter: u64
 }
+
 impl Identifier {
-    /// Get the size of an identifier
+    /// Get the size of an identifier.
     pub fn len(&self) -> usize {
         self.path.len()
     }
+
+    /// Check if the identifier is empty.
+    pub fn is_empty(&self) -> bool {
+        self.path.is_empty()
+    }
 }
-/// Generates fresh identifiers
+
+/// A generator for fresh identifiers.
 ///
 /// These identifiers represent a path in an exponential tree. At each level of the tree the amount
 /// of children doubles. This means that we can store a lot of nodes in a very low height!
 ///
-/// The LSeq tree also has an additional restriction: at each level the minimum and maximum nodes
+/// The [`crate::LSeq`] tree also has an additional restriction: at each level the minimum and maximum nodes
 /// cannot be chosen when allocating fresh nodes. This is to ensure there is always a free node
 /// that can be used to create a lower level.
 //#[derive(Serialize, Deserialize)]
@@ -41,37 +48,42 @@ pub struct IdentGen {
 }
 
 impl IdentGen {
-    /// Create a fresh tree with 0 node
+    /// Create a fresh tree with 0 node.
     pub fn new(site_id: u32) -> IdentGen {
         Self::new_with_args(INITIAL_BASE, site_id)
     }
 
-    /// Create a tree with a custom initial size
+    /// Create a tree with a custom initial size.
     pub fn new_with_args(base: u32, site_id: u32) -> IdentGen {
-        IdentGen { initial_base_bits: base, strategy_vec: BitVec::new(), site_id }
+        IdentGen {
+            initial_base_bits: base,
+            strategy_vec: BitVec::new(),
+            site_id,
+        }
     }
 
-    /// The smallest possible node in a tree
+    /// The smallest possible node in a tree.
     pub fn lower(&self) -> Identifier {
         Identifier { path: vec![(0, 0)] }
     }
 
-    /// The absolute largest possible node
+    /// The absolute largest possible node.
     pub fn upper(&self) -> Identifier {
-        Identifier { path: vec![(2u64.pow(self.initial_base_bits) - 1, 0)] }
+        Identifier {
+            path: vec![(2u64.pow(self.initial_base_bits) - 1, 0)],
+        }
     }
-    /// Allocates a new identifier between p and q.
-    /// Requires that p < q and will produce a new identifier z, p < z < q
+
+    /// Allocates a new identifier between `p` and `q`.
+    /// Requires that `p < q` and will produce a new identifier `z` such that `p < z < q`.
     ///
     /// The way to think about this is to consider the problem of finding a short number between
-    /// two decimal numbers. For example, between 0.2 and 0.4 we'd like to return 0.3
-    /// But what about 0.2 and 0.3? Well a nice property is that if we add a digit to 0.2, the
-    /// number produced will be larger than 0.2 but smaller than 0.3.
+    /// two decimal numbers. For example, between `0.2` and `0.4` we'd like to return `0.3`.
+    /// But what about `0.2` and `0.3`? Well a nice property is that if we add a digit to `0.2`, the
+    /// number produced will be larger than `0.2` but smaller than `0.3`.
     ///
-    /// If you view identifiers p and q as decimal numbers 0.p and 0.q. Then all we're doing is
+    /// If you view identifiers `p` and `q` as decimal numbers `0.p` and `0.q` then all we're doing is
     /// finding a number between them!
-    ///
-    ///
     pub fn alloc(&mut self, p: &Identifier, q: &Identifier) -> Identifier {
         assert!(p < q, "lower bound should be smaller than upper bound!");
         let mut depth = 0;
@@ -129,7 +141,8 @@ impl IdentGen {
             match p.path.get(depth) {
                 Some((ix, _)) => {
                     if ix + 1 < self.width_at(depth) {
-                        let next_index = self.index_in_range(ix + 1, self.width_at(depth), depth as u32);
+                        let next_index =
+                            self.index_in_range(ix + 1, self.width_at(depth), depth as u32);
                         return self.replace_last(p, depth, next_index);
                     }
                 }
@@ -146,7 +159,12 @@ impl IdentGen {
     // The idea is to keep pushing 0s onto the lower path until we can find a new level to allocate at.
     //
     // This reflects the case where we want to allocate something between 0.2 and 0.200000001
-    fn alloc_from_upper(&mut self, base: &Identifier, q: &Identifier, mut depth: usize) -> Identifier {
+    fn alloc_from_upper(
+        &mut self,
+        base: &Identifier,
+        q: &Identifier,
+        mut depth: usize,
+    ) -> Identifier {
         let mut ident = base.clone();
         loop {
             match q.path.get(depth) {
@@ -165,7 +183,7 @@ impl IdentGen {
             None => self.width_at(depth + 1),
         };
         let next_index = self.index_in_range(1, upper, depth as u32);
-        return self.push_index(&ident, next_index);
+        self.push_index(&ident, next_index)
     }
 
     fn replace_last(&mut self, p: &Identifier, depth: usize, ix: u64) -> Identifier {
@@ -189,11 +207,20 @@ impl IdentGen {
     // lower and upper ends of the range respectively.
     // should allocate in the range [lower, upper)
     fn index_in_range(&mut self, lower: u64, upper: u64, depth: u32) -> u64 {
-        assert!(lower < upper, "need at least one space between the bounds lower={} upper={}", lower, upper);
+        assert!(
+            lower < upper,
+            "need at least one space between the bounds lower={} upper={}",
+            lower,
+            upper
+        );
 
         let mut rng = rand::rngs::OsRng;
         let interval = BOUNDARY.min(upper - 1 - lower);
-        let step = if interval > 0 { rng.gen_range(0, interval) } else { 0 };
+        let step = if interval > 0 {
+            rng.gen_range(0, interval)
+        } else {
+            0
+        };
         if self.strategy(depth) {
             //boundary+
             lower + step
@@ -208,9 +235,8 @@ impl IdentGen {
             None => {
                 self.strategy_vec.push(rand::thread_rng().gen());
                 self.strategy(depth)
-
             }
-            Some(s) => *s
+            Some(s) => *s,
         }
         // temp strategy. Should be a random choice at each level
     }
@@ -219,10 +245,11 @@ impl IdentGen {
 #[cfg(test)]
 impl quickcheck::Arbitrary for Identifier {
     fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Identifier {
-        Identifier { path: Vec::<(u64, u32)>::arbitrary(g) }
+        Identifier {
+            path: Vec::<(u64, u32)>::arbitrary(g),
+        }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -245,8 +272,12 @@ mod test {
     fn test_alloc_eq_path() {
         let mut gen = IdentGen::new(0);
 
-        let x = Identifier { path: vec![(1, 0), (1, 0)] };
-        let y = Identifier { path: vec![(1, 0), (1, 1)] };
+        let x = Identifier {
+            path: vec![(1, 0), (1, 0)],
+        };
+        let y = Identifier {
+            path: vec![(1, 0), (1, 1)],
+        };
         gen.alloc(&x, &y);
         let b = gen.alloc(&x, &y);
         // println!("{:?} {:?} {:?}", x, b, y);
@@ -258,7 +289,9 @@ mod test {
     fn test_different_len_paths() {
         let mut gen = IdentGen::new(0);
         let x = Identifier { path: vec![(1, 0)] };
-        let y = Identifier { path: vec![(1, 0), (15, 0)] };
+        let y = Identifier {
+            path: vec![(1, 0), (15, 0)],
+        };
 
         let z = gen.alloc(&x, &y);
 
@@ -274,10 +307,19 @@ mod test {
 
         assert_eq!(gen.alloc(&a, &b), Identifier { path: vec![(2, 0)] });
 
-        let c = Identifier { path: vec![(1, 0), (0, 0), (1, 0)] };
-        let d = Identifier { path: vec![(1, 0), (0, 0), (3, 0)] };
+        let c = Identifier {
+            path: vec![(1, 0), (0, 0), (1, 0)],
+        };
+        let d = Identifier {
+            path: vec![(1, 0), (0, 0), (3, 0)],
+        };
 
-        assert_eq!(gen.alloc(&c, &d), Identifier { path: vec![(1, 0), (0, 0), (2, 0)] });
+        assert_eq!(
+            gen.alloc(&c, &d),
+            Identifier {
+                path: vec![(1, 0), (0, 0), (2, 0)]
+            }
+        );
 
         let e = Identifier { path: vec![(1, 0)] };
         let f = Identifier { path: vec![(2, 0)] };
@@ -289,16 +331,24 @@ mod test {
         {
             let mut gen = IdentGen::new(1);
 
-            let a = Identifier { path: vec![(4, 0), (4, 0)] };
-            let b = Identifier { path: vec![(4, 0), (4, 0), (1, 1)] };
+            let a = Identifier {
+                path: vec![(4, 0), (4, 0)],
+            };
+            let b = Identifier {
+                path: vec![(4, 0), (4, 0), (1, 1)],
+            };
 
             let c = gen.alloc(&a, &b);
             assert!(a < c);
             assert!(c < b);
         }
         {
-            let a = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0)] };
-            let b = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)] };
+            let a = Identifier {
+                path: vec![(5, 1), (6, 1), (6, 1), (6, 0)],
+            };
+            let b = Identifier {
+                path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)],
+            };
 
             let c = gen.alloc(&a, &b);
             assert!(a < c);

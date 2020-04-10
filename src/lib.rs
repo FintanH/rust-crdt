@@ -49,6 +49,7 @@ pub mod lseq;
 pub use crate::{
     gcounter::GCounter,
     gset::GSet,
+    lseq::LSeq,
     lwwreg::LWWReg,
     map::Map,
     mvreg::MVReg,
