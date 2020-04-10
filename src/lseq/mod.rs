@@ -53,6 +53,13 @@ use crate::vclock::{Actor, Dot};
 #[derive(Debug, Hash, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SiteId(u32);
 
+impl SiteId {
+    /// Create a `SiteId` from a `u32`.
+    pub fn new(id: u32) -> Self {
+        SiteId(id)
+    }
+}
+
 /// An `Entry` to the LSEQ consists of:
 #[derive(Debug, Clone)]
 pub struct Entry<T> {
