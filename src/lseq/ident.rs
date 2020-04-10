@@ -1,3 +1,4 @@
+use crate::vclock::Actor;
 use bitvec::vec::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -6,19 +7,24 @@ const BOUNDARY: u64 = 10;
 
 const INITIAL_BASE: u32 = 3; // start with 2^8
 
+/// Common identifier trait for an LSEQ. The type should implement
+/// [`Actor`] and [`Default`] to be usable as an identifier.
+pub trait Ident: Actor + Default {}
+impl<A: Actor + Default> Ident for A {}
+
 /// A tree identifier uniquely locates a character in an LSeq tree.
 /// It represents the path that needs to be taken in order to reach
 /// the character. At each level we store the index of the child tree node
 /// as well as the id of the site that inserted that node. This resolves conflicts where
 /// two sites decide to pick the same child index to allocate a fresh node
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize, Hash)]
-pub struct Identifier {
-    path: Vec<(u64, u32)>,
+pub struct Identifier<A: Ident> {
+    path: Vec<(u64, A)>,
     // site_id: u64,
     // counter: u64
 }
 
-impl Identifier {
+impl<A: Ident> Identifier<A> {
     /// Get the size of an identifier.
     pub fn len(&self) -> usize {
         self.path.len()
@@ -39,22 +45,22 @@ impl Identifier {
 /// cannot be chosen when allocating fresh nodes. This is to ensure there is always a free node
 /// that can be used to create a lower level.
 //#[derive(Serialize, Deserialize)]
-pub struct IdentGen {
+pub struct IdentGen<A: Ident> {
     initial_base_bits: u32,
     strategy_vec: BitVec,
     /// Site id of this tree
-    pub site_id: u32,
+    pub site_id: A,
     // clock: u64
 }
 
-impl IdentGen {
+impl<A: Ident> IdentGen<A> {
     /// Create a fresh tree with 0 node.
-    pub fn new(site_id: u32) -> IdentGen {
+    pub fn new(site_id: A) -> Self {
         Self::new_with_args(INITIAL_BASE, site_id)
     }
 
     /// Create a tree with a custom initial size.
-    pub fn new_with_args(base: u32, site_id: u32) -> IdentGen {
+    pub fn new_with_args(base: u32, site_id: A) -> Self {
         IdentGen {
             initial_base_bits: base,
             strategy_vec: BitVec::new(),
@@ -63,14 +69,16 @@ impl IdentGen {
     }
 
     /// The smallest possible node in a tree.
-    pub fn lower(&self) -> Identifier {
-        Identifier { path: vec![(0, 0)] }
+    pub fn lower(&self) -> Identifier<A> {
+        Identifier {
+            path: vec![(0, A::default())],
+        }
     }
 
     /// The absolute largest possible node.
-    pub fn upper(&self) -> Identifier {
+    pub fn upper(&self) -> Identifier<A> {
         Identifier {
-            path: vec![(2u64.pow(self.initial_base_bits) - 1, 0)],
+            path: vec![(2u64.pow(self.initial_base_bits) - 1, A::default())],
         }
     }
 
@@ -84,7 +92,7 @@ impl IdentGen {
     ///
     /// If you view identifiers `p` and `q` as decimal numbers `0.p` and `0.q` then all we're doing is
     /// finding a number between them!
-    pub fn alloc(&mut self, p: &Identifier, q: &Identifier) -> Identifier {
+    pub fn alloc(&mut self, p: &Identifier<A>, q: &Identifier<A>) -> Identifier<A> {
         assert!(p < q, "lower bound should be smaller than upper bound!");
         let mut depth = 0;
 
@@ -136,7 +144,7 @@ impl IdentGen {
     // until we can find somehwere to insert a new identifier.
     //
     // This reflects the case where we want to allocate between 0.20001 and 0.3
-    fn alloc_from_lower(&mut self, p: &Identifier, mut depth: usize) -> Identifier {
+    fn alloc_from_lower(&mut self, p: &Identifier<A>, mut depth: usize) -> Identifier<A> {
         loop {
             match p.path.get(depth) {
                 Some((ix, _)) => {
@@ -161,15 +169,15 @@ impl IdentGen {
     // This reflects the case where we want to allocate something between 0.2 and 0.200000001
     fn alloc_from_upper(
         &mut self,
-        base: &Identifier,
-        q: &Identifier,
+        base: &Identifier<A>,
+        q: &Identifier<A>,
         mut depth: usize,
-    ) -> Identifier {
+    ) -> Identifier<A> {
         let mut ident = base.clone();
         loop {
             match q.path.get(depth) {
                 // append a 0 to the result path as well
-                Some(b) if b.0 <= 1 => ident.path.push((0, b.1)),
+                Some(b) if b.0 <= 1 => ident.path.push((0, b.1.clone())),
                 // oo! a non-zero value
                 _ => break,
             }
@@ -186,16 +194,16 @@ impl IdentGen {
         self.push_index(&ident, next_index)
     }
 
-    fn replace_last(&mut self, p: &Identifier, depth: usize, ix: u64) -> Identifier {
+    fn replace_last(&mut self, p: &Identifier<A>, depth: usize, ix: u64) -> Identifier<A> {
         let mut ident = p.clone();
         ident.path.truncate(depth);
-        ident.path.push((ix, self.site_id));
+        ident.path.push((ix, self.site_id.clone()));
         ident
     }
 
-    fn push_index(&mut self, p: &Identifier, ix: u64) -> Identifier {
+    fn push_index(&mut self, p: &Identifier<A>, ix: u64) -> Identifier<A> {
         let mut ident = p.clone();
-        ident.path.push((ix, self.site_id));
+        ident.path.push((ix, self.site_id.clone()));
         ident
     }
 
@@ -243,10 +251,10 @@ impl IdentGen {
 }
 
 #[cfg(test)]
-impl quickcheck::Arbitrary for Identifier {
-    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Identifier {
+impl<A: quickcheck::Arbitrary + Ident> quickcheck::Arbitrary for Identifier<A> {
+    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Identifier<A> {
         Identifier {
-            path: Vec::<(u64, u32)>::arbitrary(g),
+            path: Vec::<(u64, A)>::arbitrary(g),
         }
     }
 }
@@ -257,7 +265,7 @@ mod test {
     use quickcheck::{quickcheck, Arbitrary, Gen, TestResult};
 
     quickcheck! {
-        fn prop_alloc(p: Identifier, q: Identifier) -> TestResult {
+        fn prop_alloc(p: Identifier<u32>, q: Identifier<u32>) -> TestResult {
             if p >= q || p.len() == 0 || q.len() == 0 {
                 return TestResult::discard();
             }

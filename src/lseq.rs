@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::traits::CmRDT;
 
-use crate::vclock::{Actor, Dot};
+use crate::vclock::Dot;
 
 // SiteId can be generalized to any A if there is a way to generate a single invalid actor id at every site
 // Currently we rely on every site using the Id 0 for that purpose.
@@ -60,13 +60,19 @@ impl SiteId {
     }
 }
 
+impl Default for SiteId {
+    fn default() -> Self {
+        SiteId(0)
+    }
+}
+
 /// An `Entry` to the LSEQ consists of:
 #[derive(Debug, Clone)]
-pub struct Entry<T> {
+pub struct Entry<T, A: Ident> {
     /// The identifier of the entry.
-    pub id: Identifier,
+    pub id: Identifier<A>,
     /// The site id of the entry.
-    pub dot: Dot<SiteId>,
+    pub dot: Dot<A>,
     /// The element for the entry.
     pub c: T,
 }
@@ -76,50 +82,50 @@ pub struct Entry<T> {
 /// An LSEQ tree is a CRDT for storing sequences of data (Strings, ordered lists).
 /// It provides an efficient view of the stored sequence, with fast index, insertion and deletion
 /// operations.
-pub struct LSeq<T> {
-    seq: Vec<Entry<T>>,
-    gen: IdentGen,
-    dot: Dot<SiteId>,
+pub struct LSeq<T, A: Ident> {
+    seq: Vec<Entry<T, A>>,
+    gen: IdentGen<A>,
+    dot: Dot<A>,
 }
 
 /// Operations that can be performed on an LSeq tree
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op")]
-pub enum Op<T> {
+pub enum Op<T, A: Ident> {
     /// Insert an element
     Insert {
         /// Identifier to insert at
         #[serde(flatten)]
-        id: Identifier,
+        id: Identifier<A>,
         /// clock of site that issued insertion
-        dot: Dot<SiteId>,
+        dot: Dot<A>,
         /// Element to insert
         c: T,
     },
     /// Delete an element
     Delete {
         /// The original clock information of the insertion we're removing
-        remote: Dot<SiteId>,
+        remote: Dot<A>,
         #[serde(flatten)]
         /// Identifier to remove
-        id: Identifier,
+        id: Identifier<A>,
         /// id of site that issued delete
-        dot: Dot<SiteId>,
+        dot: Dot<A>,
     },
 }
 
-impl<T> LSeq<T> {
+impl<T, A: Ident> LSeq<T, A> {
     /// Create an LSEQ for the empty string
-    pub fn new(id: SiteId) -> Self {
+    pub fn new(id: A) -> Self {
         LSeq {
             seq: Vec::new(),
-            gen: IdentGen::new(id.0),
+            gen: IdentGen::new(id.clone()),
             dot: Dot::new(id, 0),
         }
     }
 
     /// Insert an identifier and value in the LSEQ
-    pub fn insert(&mut self, ix: Identifier, dot: Dot<SiteId>, c: T) {
+    pub fn insert(&mut self, ix: Identifier<A>, dot: Dot<A>, c: T) {
         // Inserts only have an impact if the identifier is in the tree
         if let Err(res) = self.seq.binary_search_by(|e| e.id.cmp(&ix)) {
             self.seq.insert(res, Entry { id: ix, dot, c });
@@ -127,7 +133,7 @@ impl<T> LSeq<T> {
     }
 
     /// Remove an identifier from the LSEQ
-    pub fn delete(&mut self, ix: Identifier) {
+    pub fn delete(&mut self, ix: Identifier<A>) {
         // Deletes only have an effect if the identifier is already in the tree
         if let Ok(i) = self.seq.binary_search_by(|e| e.id.cmp(&ix)) {
             self.seq.remove(i);
@@ -136,7 +142,7 @@ impl<T> LSeq<T> {
 
     /// Perform a local insertion of an element at a given position.
     /// If `ix` is greater than the length of the LSeq then it is appended to the end.
-    pub fn insert_index(&mut self, ix: usize, c: T) -> Op<T>
+    pub fn insert_index(&mut self, ix: usize, c: T) -> Op<T, A>
     where
         T: Clone,
     {
@@ -184,7 +190,7 @@ impl<T> LSeq<T> {
     ///
     /// If `ix` is out of bounds, i.e. `ix > self.len()`, then
     /// the `Op` is not performed and `None` is returned.
-    pub fn delete_index(&mut self, ix: usize) -> Option<Op<T>>
+    pub fn delete_index(&mut self, ix: usize) -> Option<Op<T, A>>
     where
         T: Clone,
     {
@@ -222,13 +228,13 @@ impl<T> LSeq<T> {
     }
 
     /// Access the internal representation of the LSEQ
-    pub fn raw_entries(&self) -> &Vec<Entry<T>> {
+    pub fn raw_entries(&self) -> &Vec<Entry<T, A>> {
         &self.seq
     }
 }
 
-impl<T> CmRDT for LSeq<T> {
-    type Op = Op<T>;
+impl<T, A: Ident> CmRDT for LSeq<T, A> {
+    type Op = Op<T, A>;
     /// Apply an operation to an LSeq instance.
     ///
     /// If the operation is an insert and the identifier is **already** present in the LSEQ instance
@@ -236,7 +242,7 @@ impl<T> CmRDT for LSeq<T> {
     ///
     /// If the operation is a delete and the identifier is **not** present in the LSEQ instance the
     /// result is a no-op
-    fn apply(&mut self, op: Op<T>) {
+    fn apply(&mut self, op: Self::Op) {
         match op {
             Op::Insert { id, dot, c } => self.insert(id, dot, c),
             Op::Delete { id, .. } => self.delete(id),
