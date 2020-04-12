@@ -142,6 +142,10 @@ impl<T, A: Ident> LSeq<T, A> {
 
     /// Perform a local insertion of an element at a given position.
     /// If `ix` is greater than the length of the LSeq then it is appended to the end.
+    ///
+    /// # Panics
+    ///
+    /// * If the allocation of a new index was not between `ix` and `ix - 1`.
     pub fn insert_index(&mut self, ix: usize, c: T) -> Op<T, A>
     where
         T: Clone,
