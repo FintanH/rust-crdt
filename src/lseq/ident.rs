@@ -92,6 +92,11 @@ impl<A: Ident> IdentGen<A> {
     ///
     /// If you view identifiers `p` and `q` as decimal numbers `0.p` and `0.q` then all we're doing is
     /// finding a number between them!
+    ///
+    /// # Panics
+    ///
+    /// * `p` must smaller than `q`, since we are finding an `Identifier` between the two.
+    /// * It could not find an index between a lower and upper bound, during the search.
     pub fn alloc(&mut self, p: &Identifier<A>, q: &Identifier<A>) -> Identifier<A> {
         assert!(p < q, "lower bound should be smaller than upper bound!");
         let mut depth = 0;
