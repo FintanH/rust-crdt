@@ -7,24 +7,19 @@ const BOUNDARY: u64 = 10;
 
 const INITIAL_BASE: u32 = 3; // start with 2^8
 
-/// Common identifier trait for an LSEQ. The type should implement
-/// [`Actor`] and [`Default`] to be usable as an identifier.
-pub trait Ident: Actor + Default {}
-impl<A: Actor + Default> Ident for A {}
-
 /// A tree identifier uniquely locates a character in an LSeq tree.
 /// It represents the path that needs to be taken in order to reach
 /// the character. At each level we store the index of the child tree node
 /// as well as the id of the site that inserted that node. This resolves conflicts where
 /// two sites decide to pick the same child index to allocate a fresh node
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize, Hash)]
-pub struct Identifier<A: Ident> {
-    path: Vec<(u64, A)>,
+pub struct Identifier<A: Actor> {
+    path: Vec<(u64, Option<A>)>,
     // site_id: u64,
     // counter: u64
 }
 
-impl<A: Ident> Identifier<A> {
+impl<A: Actor> Identifier<A> {
     /// Get the size of an identifier.
     pub fn len(&self) -> usize {
         self.path.len()
@@ -45,7 +40,7 @@ impl<A: Ident> Identifier<A> {
 /// cannot be chosen when allocating fresh nodes. This is to ensure there is always a free node
 /// that can be used to create a lower level.
 //#[derive(Serialize, Deserialize)]
-pub struct IdentGen<A: Ident> {
+pub struct IdentGen<A: Actor> {
     initial_base_bits: u32,
     strategy_vec: BitVec,
     /// Site id of this tree
@@ -53,7 +48,7 @@ pub struct IdentGen<A: Ident> {
     // clock: u64
 }
 
-impl<A: Ident> IdentGen<A> {
+impl<A: Actor> IdentGen<A> {
     /// Create a fresh tree with 0 node.
     pub fn new(site_id: A) -> Self {
         Self::new_with_args(INITIAL_BASE, site_id)
@@ -71,14 +66,14 @@ impl<A: Ident> IdentGen<A> {
     /// The smallest possible node in a tree.
     pub fn lower(&self) -> Identifier<A> {
         Identifier {
-            path: vec![(0, A::default())],
+            path: vec![(0, None)],
         }
     }
 
     /// The absolute largest possible node.
     pub fn upper(&self) -> Identifier<A> {
         Identifier {
-            path: vec![(2u64.pow(self.initial_base_bits) - 1, A::default())],
+            path: vec![(2u64.pow(self.initial_base_bits) - 1, None)],
         }
     }
 
@@ -202,13 +197,13 @@ impl<A: Ident> IdentGen<A> {
     fn replace_last(&mut self, p: &Identifier<A>, depth: usize, ix: u64) -> Identifier<A> {
         let mut ident = p.clone();
         ident.path.truncate(depth);
-        ident.path.push((ix, self.site_id.clone()));
+        ident.path.push((ix, Some(self.site_id.clone())));
         ident
     }
 
     fn push_index(&mut self, p: &Identifier<A>, ix: u64) -> Identifier<A> {
         let mut ident = p.clone();
-        ident.path.push((ix, self.site_id.clone()));
+        ident.path.push((ix, Some(self.site_id.clone())));
         ident
     }
 
@@ -256,10 +251,10 @@ impl<A: Ident> IdentGen<A> {
 }
 
 #[cfg(test)]
-impl<A: quickcheck::Arbitrary + Ident> quickcheck::Arbitrary for Identifier<A> {
+impl<A: quickcheck::Arbitrary + Actor> quickcheck::Arbitrary for Identifier<A> {
     fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Identifier<A> {
         Identifier {
-            path: Vec::<(u64, A)>::arbitrary(g),
+            path: Vec::<(u64, Option<A>)>::arbitrary(g),
         }
     }
 }
@@ -286,10 +281,10 @@ mod test {
         let mut gen = IdentGen::new(0);
 
         let x = Identifier {
-            path: vec![(1, 0), (1, 0)],
+            path: vec![(1, Some(0)), (1, Some(0))],
         };
         let y = Identifier {
-            path: vec![(1, 0), (1, 1)],
+            path: vec![(1, Some(0)), (1, Some(1))],
         };
         gen.alloc(&x, &y);
         let b = gen.alloc(&x, &y);
@@ -301,9 +296,11 @@ mod test {
     #[test]
     fn test_different_len_paths() {
         let mut gen = IdentGen::new(0);
-        let x = Identifier { path: vec![(1, 0)] };
+        let x = Identifier {
+            path: vec![(1, Some(0))],
+        };
         let y = Identifier {
-            path: vec![(1, 0), (15, 0)],
+            path: vec![(1, Some(0)), (15, Some(0))],
         };
 
         let z = gen.alloc(&x, &y);
@@ -315,27 +312,40 @@ mod test {
     #[test]
     fn test_alloc() {
         let mut gen = IdentGen::new(0);
-        let a = Identifier { path: vec![(1, 0)] };
-        let b = Identifier { path: vec![(3, 0)] };
+        let a = Identifier {
+            path: vec![(1, Some(0))],
+        };
+        let b = Identifier {
+            path: vec![(3, Some(0))],
+        };
 
-        assert_eq!(gen.alloc(&a, &b), Identifier { path: vec![(2, 0)] });
+        assert_eq!(
+            gen.alloc(&a, &b),
+            Identifier {
+                path: vec![(2, Some(0))]
+            }
+        );
 
         let c = Identifier {
-            path: vec![(1, 0), (0, 0), (1, 0)],
+            path: vec![(1, Some(0)), (0, Some(0)), (1, Some(0))],
         };
         let d = Identifier {
-            path: vec![(1, 0), (0, 0), (3, 0)],
+            path: vec![(1, Some(0)), (0, Some(0)), (3, Some(0))],
         };
 
         assert_eq!(
             gen.alloc(&c, &d),
             Identifier {
-                path: vec![(1, 0), (0, 0), (2, 0)]
+                path: vec![(1, Some(0)), (0, Some(0)), (2, Some(0))]
             }
         );
 
-        let e = Identifier { path: vec![(1, 0)] };
-        let f = Identifier { path: vec![(2, 0)] };
+        let e = Identifier {
+            path: vec![(1, Some(0))],
+        };
+        let f = Identifier {
+            path: vec![(2, Some(0))],
+        };
 
         let res = gen.alloc(&e, &f);
 
@@ -345,10 +355,10 @@ mod test {
             let mut gen = IdentGen::new(1);
 
             let a = Identifier {
-                path: vec![(4, 0), (4, 0)],
+                path: vec![(4, Some(0)), (4, Some(0))],
             };
             let b = Identifier {
-                path: vec![(4, 0), (4, 0), (1, 1)],
+                path: vec![(4, Some(0)), (4, Some(0)), (1, Some(1))],
             };
 
             let c = gen.alloc(&a, &b);
@@ -357,10 +367,17 @@ mod test {
         }
         {
             let a = Identifier {
-                path: vec![(5, 1), (6, 1), (6, 1), (6, 0)],
+                path: vec![(5, Some(1)), (6, Some(1)), (6, Some(1)), (6, Some(0))],
             };
             let b = Identifier {
-                path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)],
+                path: vec![
+                    (5, Some(1)),
+                    (6, Some(1)),
+                    (6, Some(1)),
+                    (6, Some(0)),
+                    (0, Some(0)),
+                    (507, Some(0)),
+                ],
             };
 
             let c = gen.alloc(&a, &b);
