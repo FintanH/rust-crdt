@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::traits::CmRDT;
 
-use crate::vclock::Dot;
+use crate::vclock::{Actor, Dot};
 
 // SiteId can be generalized to any A if there is a way to generate a single invalid actor id at every site
 // Currently we rely on every site using the Id 0 for that purpose.
@@ -68,7 +68,7 @@ impl Default for SiteId {
 
 /// An `Entry` to the LSEQ consists of:
 #[derive(Debug, Clone)]
-pub struct Entry<T, A: Ident> {
+pub struct Entry<T, A: Actor> {
     /// The identifier of the entry.
     pub id: Identifier<A>,
     /// The site id of the entry.
@@ -82,7 +82,7 @@ pub struct Entry<T, A: Ident> {
 /// An LSEQ tree is a CRDT for storing sequences of data (Strings, ordered lists).
 /// It provides an efficient view of the stored sequence, with fast index, insertion and deletion
 /// operations.
-pub struct LSeq<T, A: Ident> {
+pub struct LSeq<T, A: Actor> {
     seq: Vec<Entry<T, A>>,
     gen: IdentGen<A>,
     dot: Dot<A>,
@@ -91,7 +91,7 @@ pub struct LSeq<T, A: Ident> {
 /// Operations that can be performed on an LSeq tree
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op")]
-pub enum Op<T, A: Ident> {
+pub enum Op<T, A: Actor> {
     /// Insert an element
     Insert {
         /// Identifier to insert at
@@ -114,7 +114,7 @@ pub enum Op<T, A: Ident> {
     },
 }
 
-impl<T, A: Ident> LSeq<T, A> {
+impl<T, A: Actor> LSeq<T, A> {
     /// Create an LSEQ for the empty string
     pub fn new(id: A) -> Self {
         LSeq {
@@ -251,7 +251,7 @@ impl<T, A: Ident> LSeq<T, A> {
     }
 }
 
-impl<T, A: Ident> CmRDT for LSeq<T, A> {
+impl<T, A: Actor> CmRDT for LSeq<T, A> {
     type Op = Op<T, A>;
     /// Apply an operation to an LSeq instance.
     ///
