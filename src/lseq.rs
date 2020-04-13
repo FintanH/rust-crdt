@@ -190,7 +190,7 @@ impl<T, A: Ident> LSeq<T, A> {
         op
     }
 
-    /// Perform a local deletion at ix.
+    /// Perform a local deletion at `ix`.
     ///
     /// If `ix` is out of bounds, i.e. `ix > self.len()`, then
     /// the `Op` is not performed and `None` is returned.
@@ -214,6 +214,20 @@ impl<T, A: Ident> LSeq<T, A> {
         self.apply(op.clone());
 
         Some(op)
+    }
+
+    /// Perform a local deletion at `ix`. If `ix` is out of bounds
+    /// then the last element will be deleted, i.e. `self.len() - 1`.
+    pub fn delete_index_or_last(&mut self, ix: usize) -> Op<T, A>
+    where
+        T: Clone,
+    {
+        match self.delete_index(ix) {
+            None => self
+                .delete_index(self.len() - 1)
+                .expect("delete_index_or_last: 'self.len() - 1'"),
+            Some(op) => op,
+        }
     }
 
     /// Get the length of the LSEQ.
