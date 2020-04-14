@@ -74,7 +74,7 @@ pub struct Entry<T, A: Actor> {
     /// The site id of the entry.
     pub dot: Dot<A>,
     /// The element for the entry.
-    pub c: T,
+    pub val: T,
 }
 
 /// As described in the module documentation:
@@ -100,7 +100,7 @@ pub enum Op<T, A: Actor> {
         /// clock of site that issued insertion
         dot: Dot<A>,
         /// Element to insert
-        c: T,
+        val: T,
     },
     /// Delete an element
     Delete {
@@ -125,10 +125,10 @@ impl<T, A: Actor> LSeq<T, A> {
     }
 
     /// Insert an identifier and value in the LSEQ
-    pub fn insert(&mut self, ix: Identifier<A>, dot: Dot<A>, c: T) {
+    pub fn insert(&mut self, ix: Identifier<A>, dot: Dot<A>, val: T) {
         // Inserts only have an impact if the identifier is in the tree
         if let Err(res) = self.seq.binary_search_by(|e| e.id.cmp(&ix)) {
-            self.seq.insert(res, Entry { id: ix, dot, c });
+            self.seq.insert(res, Entry { id: ix, dot, val });
         }
     }
 
@@ -146,7 +146,7 @@ impl<T, A: Actor> LSeq<T, A> {
     /// # Panics
     ///
     /// * If the allocation of a new index was not between `ix` and `ix - 1`.
-    pub fn insert_index(&mut self, ix: usize, c: T) -> Op<T, A>
+    pub fn insert_index(&mut self, ix: usize, val: T) -> Op<T, A>
     where
         T: Clone,
     {
@@ -183,7 +183,7 @@ impl<T, A: Actor> LSeq<T, A> {
         let op = Op::Insert {
             id: ix_ident,
             dot: self.dot.clone(),
-            c,
+            val,
         };
         self.dot.counter += 1;
         self.apply(op.clone());
@@ -242,7 +242,7 @@ impl<T, A: Actor> LSeq<T, A> {
 
     /// Get the elements represented by the LSEQ.
     pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
-        self.seq.iter().map(|Entry { c, .. }| c)
+        self.seq.iter().map(|Entry { val, .. }| val)
     }
 
     /// Access the internal representation of the LSEQ
@@ -262,7 +262,7 @@ impl<T, A: Actor> CmRDT for LSeq<T, A> {
     /// result is a no-op
     fn apply(&mut self, op: Self::Op) {
         match op {
-            Op::Insert { id, dot, c } => self.insert(id, dot, c),
+            Op::Insert { id, dot, val } => self.insert(id, dot, val),
             Op::Delete { id, .. } => self.delete(id),
         }
     }
