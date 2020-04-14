@@ -40,6 +40,7 @@ impl<A: Actor> Identifier<A> {
 /// cannot be chosen when allocating fresh nodes. This is to ensure there is always a free node
 /// that can be used to create a lower level.
 //#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct IdentGen<A: Actor> {
     initial_base_bits: u32,
     strategy_vec: BitVec,
