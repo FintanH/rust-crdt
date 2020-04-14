@@ -15,8 +15,6 @@ const INITIAL_BASE: u32 = 3; // start with 2^8
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize, Hash)]
 pub struct Identifier<A: Actor> {
     path: Vec<(u64, Option<A>)>,
-    // site_id: u64,
-    // counter: u64
 }
 
 impl<A: Actor> Identifier<A> {
@@ -46,7 +44,6 @@ pub struct IdentGen<A: Actor> {
     strategy_vec: BitVec,
     /// Site id of this tree
     pub site_id: A,
-    // clock: u64
 }
 
 impl<A: Actor> IdentGen<A> {
@@ -159,7 +156,8 @@ impl<A: Actor> IdentGen<A> {
                     }
                 }
                 None => {
-                    let next_index = self.index_in_range(1, self.width_at(depth as u32), depth as u32);
+                    let next_index =
+                        self.index_in_range(1, self.width_at(depth as u32), depth as u32);
                     return self.push_index(p, next_index);
                 }
             }
@@ -212,7 +210,10 @@ impl<A: Actor> IdentGen<A> {
     }
 
     fn width_at(&self, depth: u32) -> u64 {
-        assert!(self.initial_base_bits + depth  < 31, "maximum depth exceeded");
+        assert!(
+            self.initial_base_bits + depth < 31,
+            "maximum depth exceeded"
+        );
 
         2u64.pow(self.initial_base_bits + depth)
     }
@@ -272,9 +273,13 @@ mod test {
 
     fn valid_identifier(id: &Identifier<u32>) -> bool {
         let mut d = 0;
-        if id.path.len() == 0 || id.len() > 27 { return false }
+        if id.path.len() == 0 || id.len() > 27 {
+            return false;
+        }
         for (p, _) in id.path.iter() {
-            if p > &2u64.pow(3 + d) { return false }
+            if p > &2u64.pow(3 + d) {
+                return false;
+            }
             d += 1;
         }
         true
